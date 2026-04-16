@@ -1,0 +1,11 @@
+build/
+dist/
+*.exe
+*.dll
+*.o
+*.obj
+.vs/
+CMakeUserPresets.json
+src/test_decode.c
+src/test_format.c
+src/test_struct.c

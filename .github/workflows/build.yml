@@ -1,0 +1,107 @@
+name: Build & Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install SDL2 via vcpkg
+        run: |
+          vcpkg install sdl2:x64-windows
+          echo "CMAKE_TOOLCHAIN_FILE=$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake" >> $env:GITHUB_ENV
+
+      - name: Configure
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE="$env:CMAKE_TOOLCHAIN_FILE" -DVCPKG_TARGET_TRIPLET=x64-windows
+
+      - name: Build
+        run: cmake --build build --config Release
+
+      - name: Package
+        run: |
+          mkdir dist
+          copy build\Release\gaf-viewer.exe dist\
+          copy build\Release\SDL2.dll dist\ 2>nul; exit 0
+          copy build\vcpkg_installed\x64-windows\bin\SDL2.dll dist\ 2>nul; exit 0
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gaf-viewer-windows
+          path: dist/
+
+  build-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: sudo apt-get update && sudo apt-get install -y libsdl2-dev
+
+      - name: Configure & Build
+        run: |
+          cmake -B build -DCMAKE_BUILD_TYPE=Release
+          cmake --build build --config Release
+
+      - name: Package
+        run: |
+          mkdir dist
+          cp build/gaf-viewer dist/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gaf-viewer-linux
+          path: dist/
+
+  build-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install SDL2
+        run: brew install sdl2
+
+      - name: Configure & Build
+        run: |
+          cmake -B build -DCMAKE_BUILD_TYPE=Release
+          cmake --build build --config Release
+
+      - name: Package
+        run: |
+          mkdir dist
+          cp build/gaf-viewer dist/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gaf-viewer-macos
+          path: dist/
+
+  release:
+    needs: [build-windows, build-linux, build-macos]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Zip artifacts
+        run: |
+          cd artifacts/gaf-viewer-windows && zip -r ../../gaf-viewer-windows.zip . && cd ../..
+          cd artifacts/gaf-viewer-linux && tar czf ../../gaf-viewer-linux.tar.gz . && cd ../..
+          cd artifacts/gaf-viewer-macos && tar czf ../../gaf-viewer-macos.tar.gz . && cd ../..
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            gaf-viewer-windows.zip
+            gaf-viewer-linux.tar.gz
+            gaf-viewer-macos.tar.gz
+          generate_release_notes: true
